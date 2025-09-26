@@ -28,49 +28,56 @@ class SegmentParams:
 
 
 def segment_beans(
-    img_bgr: np.ndarray, params: SegmentParams
+    image: np.ndarray, params: SegmentParams
 ) -> Tuple[np.ndarray, List[np.ndarray]]:
     """Return binary mask and list of contours for each bean after watershed splitting."""
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    fg = th if th.mean() > 127 else cv2.bitwise_not(th)
+    _, threshold = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    foreground = threshold if threshold.mean() > 127 else cv2.bitwise_not(threshold)
 
-    k = cv2.getStructuringElement(
+    k_shape = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (params.open_ksize, params.open_ksize)
     )
-    opened = cv2.morphologyEx(fg, cv2.MORPH_OPEN, k, iterations=1)
+    opened = cv2.morphologyEx(
+        foreground,
+        cv2.MORPH_OPEN,
+        k_shape,
+        iterations=1,
+    )
 
-    kbg = cv2.getStructuringElement(
+    k_background = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (params.sure_bg_dilate, params.sure_bg_dilate)
     )
-    sure_bg = cv2.dilate(opened, kbg, iterations=2)
+    sure_background = cv2.dilate(opened, k_background, iterations=2)
 
-    dist = cv2.distanceTransform(opened, cv2.DIST_L2, 5)
-    dist_norm = dist / dist.max() if dist.max() > 0 else dist
-    sure_fg = (dist_norm > params.distance_thresh).astype(np.uint8) * 255
+    distance = cv2.distanceTransform(opened, cv2.DIST_L2, 5)
+    distance_normal = distance / distance.max() if distance.max() > 0 else distance
+    sure_foreground = (distance_normal > params.distance_thresh).astype(np.uint8) * 255
 
-    unknown = cv2.subtract(sure_bg, sure_fg)
+    unknown = cv2.subtract(sure_background, sure_foreground)
 
-    num_labels, markers = cv2.connectedComponents(sure_fg)
+    _, markers = cv2.connectedComponents(sure_foreground)
     markers = markers + 1
     markers[unknown == 255] = 0
 
-    cv2.watershed(img_bgr, markers)
+    cv2.watershed(image, markers)
 
     mask = np.zeros(gray.shape, dtype=np.uint8)
-    contours = []
+    contours: list[np.ndarray] = []
     for lbl in range(2, markers.max() + 1):
         comp = (markers == lbl).astype(np.uint8) * 255
-        cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        for c in cnts:
-            area = cv2.contourArea(c)
+        found_contours, _ = cv2.findContours(
+            comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        for contour in found_contours:
+            area = cv2.contourArea(contour)
             if params.min_area <= area <= params.max_area:
-                contours.append(c)
+                contours.append(contour)
                 cv2.drawContours(
                     mask,
-                    [c],
+                    [contour],
                     -1,
                     (255, 255, 255),
                     thickness=-1,
@@ -79,9 +86,9 @@ def segment_beans(
     return mask, contours
 
 
-def contour_features(img_bgr: np.ndarray, contour: np.ndarray) -> np.ndarray:
+def contour_features(image: np.ndarray, contour: np.ndarray) -> np.ndarray:
     """Extracts shape and color features for a single contour."""
-    mask = np.zeros(img_bgr.shape[:2], dtype=np.uint8)
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
     cv2.drawContours(
         mask,
         [contour],
@@ -100,13 +107,13 @@ def contour_features(img_bgr: np.ndarray, contour: np.ndarray) -> np.ndarray:
 
     ecc = 0.0
     if len(contour) >= 5:
-        (cx, cy), (MA, ma), angle = cv2.fitEllipse(contour)
-        a = max(MA, ma) / 2.0
-        b = min(MA, ma) / 2.0
+        _, (major_axis, minor_axis), _ = cv2.fitEllipse(contour)
+        a = max(major_axis, minor_axis) / 2.0
+        b = min(major_axis, minor_axis) / 2.0
         if a > 1e-6:
             ecc = math.sqrt(1.0 - (b**2) / (a**2))
 
-    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
 
     def masked_stats(ch):
         vals = ch[mask == 255]
@@ -120,7 +127,13 @@ def contour_features(img_bgr: np.ndarray, contour: np.ndarray) -> np.ndarray:
     return np.array(features, dtype=np.float32)
 
 
-def load_training_samples(data_dir: Path) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+def load_training_samples(
+    data_dir: Path,
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    List[str],
+]:
     X, y = [], []
     classes = sorted([d.name for d in data_dir.iterdir() if d.is_dir()])
     if not classes:
@@ -128,26 +141,34 @@ def load_training_samples(data_dir: Path) -> Tuple[np.ndarray, np.ndarray, List[
 
     for idx, cls in enumerate(classes):
         for img_path in sorted((data_dir / cls).glob("*.*")):
-            img = cv2.imdecode(
-                np.fromfile(str(img_path), dtype=np.uint8), cv2.IMREAD_COLOR
+            image = cv2.imdecode(
+                np.fromfile(str(img_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR,
             )
-            if img is None:
+            if image is None:
                 continue
 
             params = SegmentParams(min_area=300, open_ksize=3)
-            _, cnts = segment_beans(img, params)
+            _, contours = segment_beans(image, params)
 
-            if not cnts:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            if not contours:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 blur = cv2.GaussianBlur(gray, (5, 5), 0)
-                _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                cnts, _ = cv2.findContours(
-                    th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                _, threshold = cv2.threshold(
+                    blur,
+                    0,
+                    255,
+                    cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+                )
+                contours, _ = cv2.findContours(
+                    threshold,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE,
                 )
 
-            if cnts:
-                cnt = max(cnts, key=cv2.contourArea)
-                features = contour_features(img, cnt)
+            if contours:
+                contour = max(contours, key=cv2.contourArea)
+                features = contour_features(image, contour)
                 X.append(features)
                 y.append(idx)
 
@@ -194,43 +215,39 @@ def predict(
         classes = json.load(f)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    img = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if img is None:
+    image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
         raise RuntimeError(f"Could not read image {image_path}")
 
     params = SegmentParams(min_area=min_area, max_area=max_area, open_ksize=open_ksize)
-    mask, contours = segment_beans(img, params)
+    _, contours = segment_beans(image, params)
 
     results = []
-    overlay = img.copy()
+    overlay = image.copy()
     for i, cnt in enumerate(contours):
-        features = contour_features(img, cnt)
-        proba = model.predict_proba([features])[0]
-        yhat = int(np.argmax(proba))
+        features = contour_features(image, cnt)
+        probability = model.predict_proba([features])[0]
+        yhat = int(np.argmax(probability))
         label = classes[yhat]
-        conf = float(proba[yhat])
+        confidence = float(probability[yhat])
 
-        x, y, w, h = cv2.boundingRect(cnt)
-        cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        text = f"{label} {conf:.2f}"
-        cv2.putText(
+        x, y, width, height = cv2.boundingRect(cnt)
+        cv2.rectangle(
             overlay,
-            text,
-            (x, y - 6),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 0, 0),
+            (x, y),
+            (x + width, y + height),
+            (0, 255, 0),
             2,
-            cv2.LINE_AA,
         )
+        text = f"{label} {confidence:.2f}"
         cv2.putText(
             overlay,
             text,
-            (x, y - 6),
+            (x, y + 15),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
-            (0, 255, 255),
-            1,
+            (255, 0, 255),
+            2,
             cv2.LINE_AA,
         )
 
@@ -239,10 +256,10 @@ def predict(
                 "idx": i,
                 "x": x,
                 "y": y,
-                "w": w,
-                "h": h,
+                "w": width,
+                "h": height,
                 "pred_class": label,
-                "confidence": conf,
+                "confidence": confidence,
             }
         )
 
