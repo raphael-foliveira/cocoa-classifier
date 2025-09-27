@@ -1,5 +1,7 @@
 from pathlib import Path
-from .helpers import convert_to_gray
+
+from cv2.typing import MatLike
+from .helpers import get_blurred_gray
 import cv2
 from .segment_params import SegmentParams
 from .bean_segmenter import segment_beans
@@ -32,19 +34,8 @@ def load_training_samples(
             _, contours = segment_beans(image, params)
 
             if not contours:
-                gray = convert_to_gray(image)
-                blur = cv2.GaussianBlur(gray, (5, 5), 0)
-                _, threshold = cv2.threshold(
-                    blur,
-                    0,
-                    255,
-                    cv2.THRESH_BINARY + cv2.THRESH_OTSU,
-                )
-                contours, _ = cv2.findContours(
-                    threshold,
-                    cv2.RETR_EXTERNAL,
-                    cv2.CHAIN_APPROX_SIMPLE,
-                )
+                threshold = _find_threshold(image)
+                contours = _find_contours(threshold)
 
             if contours:
                 contour = max(contours, key=cv2.contourArea)
@@ -55,3 +46,23 @@ def load_training_samples(
     if not feature_vectors:
         raise RuntimeError("No training samples extracted. Check images.")
     return np.vstack(feature_vectors), np.array(class_labels), classes
+
+
+def _find_threshold(image: np.ndarray) -> np.ndarray:
+    blur = get_blurred_gray(image)
+    _, threshold = cv2.threshold(
+        blur,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    )
+    return threshold
+
+
+def _find_contours(image: np.ndarray) -> MatLike:
+    _, contours = cv2.findContours(
+        image,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+    return contours

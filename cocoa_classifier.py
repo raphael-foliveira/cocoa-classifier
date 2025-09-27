@@ -1,4 +1,9 @@
 import argparse
+import csv
+import numpy as np
+import cv2
+import json
+from joblib import load
 from pathlib import Path
 from cocoa_classifier.trainer import train
 from cocoa_classifier.predictor import predict
@@ -33,17 +38,43 @@ def main():
     )
 
     args = ap.parse_args()
+
     if args.cmd == "train":
         train(args.data_dir, args.out_dir)
     elif args.cmd == "predict":
-        predict(
-            args.image,
-            args.model_dir,
-            args.out_dir,
+        model_dir = args.model_dir
+        image_path = args.image
+        model = load(model_dir / "model.pkl")
+        with open(model_dir / "classes.json", "r") as f:
+            classes = json.load(f)
+        out_dir = args.out_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if image is None:
+            raise RuntimeError(f"Could not read image {image_path}")
+
+        overlay, results = predict(
+            image,
+            model,
+            classes,
             args.min_area,
             args.max_area,
             args.open_ksize,
         )
+
+        out_img = out_dir / f"{Path(image_path).stem}_annotated.png"
+        cv2.imwrite(str(out_img), overlay)
+
+        out_csv = out_dir / "predictions.csv"
+        if results:
+            with open(out_csv, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=results[0].keys())
+                writer.writeheader()
+                writer.writerows(results)
+
+        print(f"Wrote {out_img}")
+        print(f"Wrote {out_csv}")
 
 
 if __name__ == "__main__":
