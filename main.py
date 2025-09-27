@@ -1,6 +1,13 @@
-def main():
-    print("Hello from a3!")
+from fastapi import FastAPI
+
+app = FastAPI()
 
 
-if __name__ == "__main__":
-    main()
+@app.post("/train")
+async def train():
+    pass
+
+
+@app.post("/predict")
+async def predict():
+    pass

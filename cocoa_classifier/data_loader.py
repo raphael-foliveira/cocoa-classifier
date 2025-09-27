@@ -1,0 +1,57 @@
+from pathlib import Path
+from .helpers import convert_to_gray
+import cv2
+from .segment_params import SegmentParams
+from .bean_segmenter import segment_beans
+from .feature_contourer import contour_features
+import numpy as np
+
+
+def load_training_samples(
+    data_dir: Path,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    list[str],
+]:
+    feature_vectors, class_labels = [], []
+    classes = sorted([d.name for d in data_dir.iterdir() if d.is_dir()])
+    if not classes:
+        raise RuntimeError(f"No class folders found in {data_dir}")
+
+    for idx, cls in enumerate(classes):
+        for img_path in sorted((data_dir / cls).glob("*.*")):
+            image = cv2.imdecode(
+                np.fromfile(str(img_path), dtype=np.uint8),
+                cv2.IMREAD_COLOR,
+            )
+            if image is None:
+                continue
+
+            params = SegmentParams(min_area=300, open_ksize=3)
+            _, contours = segment_beans(image, params)
+
+            if not contours:
+                gray = convert_to_gray(image)
+                blur = cv2.GaussianBlur(gray, (5, 5), 0)
+                _, threshold = cv2.threshold(
+                    blur,
+                    0,
+                    255,
+                    cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+                )
+                contours, _ = cv2.findContours(
+                    threshold,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE,
+                )
+
+            if contours:
+                contour = max(contours, key=cv2.contourArea)
+                features = contour_features(image, contour)
+                feature_vectors.append(features)
+                class_labels.append(idx)
+
+    if not feature_vectors:
+        raise RuntimeError("No training samples extracted. Check images.")
+    return np.vstack(feature_vectors), np.array(class_labels), classes
