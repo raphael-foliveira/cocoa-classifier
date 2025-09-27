@@ -1,7 +1,7 @@
 import numpy as np
 from .segment_params import SegmentParams
 import cv2
-from .helpers import convert_to_lab, convert_to_bgr, convert_to_gray
+from .helpers import convert_to_lab, convert_to_bgr, get_blurred_gray
 
 
 def segment_beans(
@@ -18,7 +18,7 @@ def segment_beans(
 
     _apply_watershed_in_place(image, markers)
 
-    contours: list[np.ndarray] = _exctract_valid_contours(
+    contours: list[np.ndarray] = _extract_valid_contours(
         markers,
         params.min_area,
         params.max_area,
@@ -40,8 +40,7 @@ def _normalize_contrast(img_bgr: np.ndarray) -> np.ndarray:
 
 def _preprocess_to_gray(image: np.ndarray) -> np.ndarray:
     image = _normalize_contrast(image)
-    gray = convert_to_gray(image)
-    return cv2.GaussianBlur(gray, (5, 5), 0)
+    return get_blurred_gray(image)
 
 
 def _binarize_to_foreground(image: np.ndarray) -> np.ndarray:
@@ -120,7 +119,7 @@ def _paint_mask_from_contours(
     return mask
 
 
-def _exctract_valid_contours(
+def _extract_valid_contours(
     markers: np.ndarray, min_area: float, max_area: float
 ) -> list[np.ndarray]:
     contours: list[np.ndarray] = []
