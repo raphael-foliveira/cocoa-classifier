@@ -4,9 +4,7 @@ import cv2
 from .helpers import convert_to_lab, convert_to_bgr, get_blurred_gray
 
 
-def segment_beans(
-    image: np.ndarray, params: SegmentParams
-) -> tuple[np.ndarray, list[np.ndarray]]:
+def segment_beans(image: np.ndarray, params: SegmentParams) -> list[np.ndarray]:
     """Return binary mask and list of contours for each bean after watershed splitting."""
     blur = _preprocess_to_gray(image)
     white_foreground = _binarize_to_foreground(blur)
@@ -23,9 +21,27 @@ def segment_beans(
         params.min_area,
         params.max_area,
     )
-    mask = _paint_mask_from_contours(image.shape[:2], contours)
 
-    return mask, contours
+    return contours
+
+
+def segment_single_bean(image: np.ndarray, params: SegmentParams) -> list[np.ndarray]:
+    """Segment single bean from training image using simple thresholding."""
+    blur = _preprocess_to_gray(image)
+    threshold = _binarize_to_foreground(blur)
+    threshold = _open_foreground(threshold, params.open_ksize)
+
+    # Find contours
+    contours, _ = cv2.findContours(
+        threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    # Filter by area and return the largest valid contour
+    valid_contours = [
+        c for c in contours if params.min_area <= cv2.contourArea(c) <= params.max_area
+    ]
+
+    return valid_contours
 
 
 def _normalize_contrast(img_bgr: np.ndarray) -> np.ndarray:

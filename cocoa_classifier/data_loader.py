@@ -4,7 +4,7 @@ from cv2.typing import MatLike
 from .helpers import get_blurred_gray
 import cv2
 from .segment_params import SegmentParams
-from .bean_segmenter import segment_beans
+from .bean_segmenter import segment_single_bean
 from .feature_contourer import contour_features
 import numpy as np
 
@@ -16,7 +16,9 @@ def load_training_samples(
     np.ndarray,
     list[str],
 ]:
-    feature_vectors, class_labels = [], []
+    feature_vectors: list[np.ndarray] = []
+    class_labels: list[int] = []
+
     classes = sorted([d.name for d in data_dir.iterdir() if d.is_dir()])
     if not classes:
         raise RuntimeError(f"No class folders found in {data_dir}")
@@ -30,12 +32,17 @@ def load_training_samples(
             if image is None:
                 continue
 
-            params = SegmentParams(min_area=300, open_ksize=3)
-            _, contours = segment_beans(image, params)
+            # Use single-bean segmentation for training images
+            # More appropriate parameters for single beans
+            params = SegmentParams(min_area=1000, max_area=100000, open_ksize=5)
+            contours = segment_single_bean(image, params)
 
+            # Fallback to simple thresholding if single-bean segmentation fails
             if not contours:
                 threshold = _find_threshold(image)
                 contours = _find_contours(threshold)
+                # Filter contours by area for fallback
+                contours = [c for c in contours if 1000 <= cv2.contourArea(c) <= 100000]
 
             if contours:
                 contour = max(contours, key=cv2.contourArea)
