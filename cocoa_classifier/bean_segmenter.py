@@ -1,7 +1,9 @@
-import numpy as np
-from .segment_params import SegmentParams
 import cv2
-from .helpers import convert_to_lab, convert_to_bgr, get_blurred_gray
+import numpy as np
+from cv2.typing import MatLike
+
+from .helpers import convert_to_bgr, convert_to_lab, get_blurred_gray
+from .segment_params import SegmentParams
 
 
 def segment_beans(image: np.ndarray, params: SegmentParams) -> list[np.ndarray]:
@@ -133,6 +135,26 @@ def _paint_mask_from_contours(
             thickness=-1,
         )
     return mask
+
+
+def get_contours(image: MatLike, single_bean: bool) -> list[np.ndarray]:
+    if single_bean:
+        return segment_single_bean(
+            image,
+            SegmentParams(
+                min_area=1000,
+                max_area=100000,
+                open_ksize=5,
+            ),
+        )
+    return segment_beans(
+        image,
+        SegmentParams(
+            min_area=600,
+            max_area=2_000_000,
+            open_ksize=5,
+        ),
+    )
 
 
 def _extract_valid_contours(

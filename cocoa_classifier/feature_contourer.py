@@ -1,6 +1,8 @@
-import numpy as np
-import cv2
 import math
+
+import cv2
+import numpy as np
+
 from .helpers import convert_to_lab
 
 
