@@ -16,6 +16,7 @@ dependencies = [
     { name = "joblib" },
     { name = "numpy" },
     { name = "opencv-python" },
+    { name = "python-multipart" },
     { name = "scikit-learn" },
 ]
 
@@ -25,6 +26,7 @@ requires-dist = [
     { name = "joblib", specifier = ">=1.5.2" },
     { name = "numpy", specifier = ">=2.3.3" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
 ]
 

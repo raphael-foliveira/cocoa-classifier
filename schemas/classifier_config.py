@@ -5,11 +5,19 @@ from pydantic import BaseModel, Field
 
 
 class TrainConfig(BaseModel):
+    model_config = {
+        "from_attributes": True,
+    }
+
     data_dir: Path
     out_dir: Path
 
 
 class PredictConfig(BaseModel):
+    model_config = {
+        "from_attributes": True,
+    }
+
     image: str
     model_dir: Path
     out_dir: Path

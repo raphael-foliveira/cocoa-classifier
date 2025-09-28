@@ -9,9 +9,10 @@ dependencies = [
     "joblib>=1.5.2",
     "numpy>=2.3.3",
     "opencv-python>=4.11.0.86",
+    "python-multipart>=0.0.20",
     "scikit-learn>=1.7.2",
 ]
 
 
 [tool.ruff]
-select = ["I001"]
+select = ["I001", "F401"]

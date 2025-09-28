@@ -19,11 +19,12 @@ class PredictionResultRow(TypedDict):
 
 
 def predict(
-    image: MatLike,
+    file: bytes,
     model: Any,
     classes: list[str],
     single_bean: bool = False,
 ):
+    image = _decode_image(file)
     contours = get_contours(image, single_bean)
 
     results: list[PredictionResultRow] = []
@@ -68,3 +69,10 @@ def predict(
         )
 
     return overlay, results
+
+
+def _decode_image(file: bytes) -> MatLike:
+    return cv2.imdecode(
+        np.frombuffer(file, dtype=np.uint8),
+        cv2.IMREAD_COLOR,
+    )

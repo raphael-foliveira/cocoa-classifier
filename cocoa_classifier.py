@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 
 import cv2
-import numpy as np
 from joblib import load
 
 from cocoa_classifier.predictor import predict
@@ -28,12 +27,11 @@ def main():
             classes = json.load(f)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        image = cv2.imdecode(np.fromfile(image_path, dtype=np.uint8), cv2.IMREAD_COLOR)
-        if image is None:
-            raise RuntimeError(f"Could not read image {image_path}")
+        with open(image_path, "rb") as f:
+            encoded_image = f.read()
 
         overlay, results = predict(
-            image,
+            encoded_image,
             model,
             classes,
         )
